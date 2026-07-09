@@ -100,6 +100,34 @@ def extract_environment(packet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return metrics
 
 
+def extract_device(packet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    decoded = packet.get("decoded", {})
+    telemetry = decoded.get("telemetry", {})
+
+    device = (
+        telemetry.get("device_metrics")
+        or telemetry.get("deviceMetrics")
+        or telemetry.get("device")
+    )
+
+    if not isinstance(device, dict):
+        return None
+
+    metrics = {
+        "battery_level": pick(device, "battery_level", "batteryLevel"),
+        "voltage": pick(device, "voltage"),
+        "channel_utilization": pick(device, "channel_utilization", "channelUtilization"),
+        "air_util_tx": pick(device, "air_util_tx", "airUtilTx"),
+        "uptime_seconds": pick(device, "uptime_seconds", "uptimeSeconds"),
+        "raw_device": device,
+    }
+
+    if all(value is None for key, value in metrics.items() if key != "raw_device"):
+        return None
+
+    return metrics
+
+
 def make_packet_summary(packet: Dict[str, Any]) -> Dict[str, Any]:
     decoded = packet.get("decoded", {})
 
@@ -156,7 +184,8 @@ def main() -> int:
 
         aq = extract_air_quality(packet)
         env = extract_environment(packet)
-        if aq is None and env is None:
+        device = extract_device(packet)
+        if aq is None and env is None and device is None:
             return
 
         from_node = packet.get("from")
@@ -169,6 +198,7 @@ def main() -> int:
             "metrics": {
                 **(aq or {}),
                 **(env or {}),
+                **(device or {}),
             },
         }
 

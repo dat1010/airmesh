@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS air_quality_readings (
   gas_resistance REAL,
   voltage REAL,
   current REAL,
+  battery_level INTEGER,
+  channel_utilization REAL,
+  air_util_tx REAL,
+  uptime_seconds INTEGER,
 
   rx_snr REAL,
   rx_rssi INTEGER,
@@ -59,6 +63,10 @@ OPTIONAL_COLUMNS = {
     "gas_resistance": "REAL",
     "voltage": "REAL",
     "current": "REAL",
+    "battery_level": "INTEGER",
+    "channel_utilization": "REAL",
+    "air_util_tx": "REAL",
+    "uptime_seconds": "INTEGER",
 }
 
 
@@ -145,6 +153,10 @@ def reading_from_payload(topic: str, payload: bytes) -> dict:
         "gas_resistance": float_or_none(metrics.get("gas_resistance")),
         "voltage": float_or_none(metrics.get("voltage")),
         "current": float_or_none(metrics.get("current")),
+        "battery_level": int_or_none(metrics.get("battery_level")),
+        "channel_utilization": float_or_none(metrics.get("channel_utilization")),
+        "air_util_tx": float_or_none(metrics.get("air_util_tx")),
+        "uptime_seconds": int_or_none(metrics.get("uptime_seconds")),
         "rx_snr": float_or_none(message.get("rx_snr")),
         "rx_rssi": int_or_none(message.get("rx_rssi")),
         "hop_limit": int_or_none(message.get("hop_limit")),
@@ -181,6 +193,10 @@ def insert_reading(conn: sqlite3.Connection, reading: dict) -> bool:
           gas_resistance,
           voltage,
           current,
+          battery_level,
+          channel_utilization,
+          air_util_tx,
+          uptime_seconds,
           rx_snr,
           rx_rssi,
           hop_limit,
@@ -203,6 +219,10 @@ def insert_reading(conn: sqlite3.Connection, reading: dict) -> bool:
           :gas_resistance,
           :voltage,
           :current,
+          :battery_level,
+          :channel_utilization,
+          :air_util_tx,
+          :uptime_seconds,
           :rx_snr,
           :rx_rssi,
           :hop_limit,
@@ -219,16 +239,26 @@ def insert_reading(conn: sqlite3.Connection, reading: dict) -> bool:
 def format_saved_line(reading: dict, saved: bool) -> str:
     status = "saved" if saved else "duplicate"
     label = reading["source_node_id"] or "node"
-    return (
-        f"{reading['received_at']} {label}/{reading['source_node']} "
-        f"PM1={reading['pm1_standard']} "
-        f"PM2.5={reading['pm25_standard']} "
-        f"PM10={reading['pm10_standard']} "
-        f"T={reading['temperature_c']}C "
-        f"RH={reading['relative_humidity']}% "
-        f"P={reading['barometric_pressure']}hPa "
-        f"{status}"
-    )
+    parts = [
+        f"{reading['received_at']} {label}/{reading['source_node']}",
+        f"PM1={reading['pm1_standard']}",
+        f"PM2.5={reading['pm25_standard']}",
+        f"PM10={reading['pm10_standard']}",
+    ]
+
+    if reading["temperature_c"] is not None:
+        parts.append(f"T={reading['temperature_c']}C")
+    if reading["relative_humidity"] is not None:
+        parts.append(f"RH={reading['relative_humidity']}%")
+    if reading["barometric_pressure"] is not None:
+        parts.append(f"P={reading['barometric_pressure']}hPa")
+    if reading["battery_level"] is not None:
+        parts.append(f"battery={reading['battery_level']}%")
+    if reading["voltage"] is not None:
+        parts.append(f"voltage={reading['voltage']}V")
+
+    parts.append(status)
+    return " ".join(parts)
 
 
 def mqtt_connect_failed(reason_code) -> bool:
