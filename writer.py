@@ -183,6 +183,18 @@ def format_saved_line(reading: dict, saved: bool) -> str:
     )
 
 
+def mqtt_connect_failed(reason_code) -> bool:
+    is_failure = getattr(reason_code, "is_failure", None)
+    if is_failure is not None:
+        return bool(is_failure() if callable(is_failure) else is_failure)
+
+    value = getattr(reason_code, "value", reason_code)
+    if isinstance(value, int):
+        return value != 0
+
+    return str(reason_code) not in ("0", "Success")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Persist Meshtastic air-quality MQTT messages to JSONL and SQLite."
@@ -203,7 +215,7 @@ def main() -> int:
     conn = connect_db(args.db)
 
     def on_connect(client, userdata, flags, reason_code, properties):
-        if int(reason_code) != 0:
+        if mqtt_connect_failed(reason_code):
             print(f"MQTT connect failed: {reason_code}", file=sys.stderr)
             return
         client.subscribe(args.topic)
