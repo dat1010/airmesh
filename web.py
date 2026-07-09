@@ -293,6 +293,16 @@ INDEX_HTML = """<!doctype html>
       document.getElementById(id).textContent = value ?? "--";
     }
 
+    function latestValue(key) {
+      return state.readings.find((reading) => reading[key] !== null && reading[key] !== undefined)?.[key];
+    }
+
+    function latestReadingWith(...keys) {
+      return state.readings.find((reading) =>
+        keys.some((key) => reading[key] !== null && reading[key] !== undefined)
+      );
+    }
+
     function fmtNumber(value, digits = 1) {
       const number = Number(value);
       if (!Number.isFinite(number)) return "--";
@@ -300,13 +310,20 @@ INDEX_HTML = """<!doctype html>
     }
 
     function renderTiles() {
-      const latest = state.readings[0];
-      setText("pm1", latest?.pm1_standard);
-      setText("pm25", latest?.pm25_standard);
-      setText("pm10", latest?.pm10_standard);
-      setText("temp", fmtNumber(latest?.temperature_c));
-      setText("humidity", fmtNumber(latest?.relative_humidity));
-      setText("pressure", fmtNumber(latest?.barometric_pressure));
+      const latest = latestReadingWith(
+        "pm1_standard",
+        "pm25_standard",
+        "pm10_standard",
+        "temperature_c",
+        "relative_humidity",
+        "barometric_pressure"
+      );
+      setText("pm1", latestValue("pm1_standard"));
+      setText("pm25", latestValue("pm25_standard"));
+      setText("pm10", latestValue("pm10_standard"));
+      setText("temp", fmtNumber(latestValue("temperature_c")));
+      setText("humidity", fmtNumber(latestValue("relative_humidity")));
+      setText("pressure", fmtNumber(latestValue("barometric_pressure")));
 
       if (latest) {
         document.getElementById("latestMeta").textContent =
