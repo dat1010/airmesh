@@ -203,7 +203,7 @@ def main() -> int:
     conn = connect_db(args.db)
 
     def on_connect(client, userdata, flags, reason_code, properties):
-        if reason_code:
+        if int(reason_code) != 0:
             print(f"MQTT connect failed: {reason_code}", file=sys.stderr)
             return
         client.subscribe(args.topic)
