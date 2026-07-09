@@ -26,6 +26,7 @@ python run_all.py \
   --port /dev/ttyACM0 \
   --aq1 0x84f3f1a7 \
   --mqtt-host localhost \
+  --web \
   --jsonl data/airquality.jsonl \
   --db data/meshair.db
 ```
@@ -79,6 +80,34 @@ Or use SQLite directly:
 ```bash
 sqlite3 data/meshair.db \
   "select received_at, source_node, pm1_standard, pm25_standard, pm10_standard, rx_rssi, rx_snr from air_quality_readings order by received_at desc limit 10;"
+```
+
+## Web UI
+
+Start the dashboard:
+
+```bash
+python web.py --host 0.0.0.0 --port 8080 --db data/meshair.db
+```
+
+Or include it with the combined runner:
+
+```bash
+python run_all.py --port /dev/ttyACM0 --aq1 0x84f3f1a7 --web
+```
+
+Open:
+
+```text
+http://192.168.1.22:8080/
+```
+
+The page refreshes every 10 seconds and also exposes:
+
+```text
+/api/summary
+/api/readings?limit=80
+/health
 ```
 
 ## Docker

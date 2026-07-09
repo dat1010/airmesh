@@ -17,6 +17,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--topic-prefix", default="meshair")
     parser.add_argument("--jsonl", default="data/airquality.jsonl")
     parser.add_argument("--db", default="data/meshair.db")
+    parser.add_argument("--web", action="store_true", help="Start the local web UI too")
+    parser.add_argument("--web-host", default="0.0.0.0")
+    parser.add_argument("--web-port", type=int, default=8080)
     return parser.parse_args()
 
 
@@ -64,6 +67,16 @@ def main() -> int:
         "--db",
         args.db,
     ]
+    web_cmd = [
+        python,
+        "web.py",
+        "--host",
+        args.web_host,
+        "--port",
+        str(args.web_port),
+        "--db",
+        args.db,
+    ]
 
     processes: list[subprocess.Popen] = []
 
@@ -80,6 +93,10 @@ def main() -> int:
 
     print("starting collector", flush=True)
     processes.append(subprocess.Popen(collector_cmd))
+
+    if args.web:
+        print("starting web UI", flush=True)
+        processes.append(subprocess.Popen(web_cmd))
 
     while True:
         for process in processes:

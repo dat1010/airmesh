@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY collector.py query.py run_all.py writer.py ./
+COPY collector.py query.py run_all.py web.py writer.py ./
 
 RUN mkdir -p /data
 
