@@ -87,7 +87,7 @@ sqlite3 data/meshair.db \
 Start the dashboard:
 
 ```bash
-python web.py --host 0.0.0.0 --port 8080 --db data/meshair.db
+python web.py --host 0.0.0.0 --port 8055 --db data/meshair.db
 ```
 
 Or include it with the combined runner:
@@ -99,7 +99,7 @@ python run_all.py --port /dev/ttyACM0 --aq1 0x84f3f1a7 --web
 Open:
 
 ```text
-http://192.168.1.22:8080/
+http://192.168.1.22:8055/
 ```
 
 The page refreshes every 10 seconds and also exposes:

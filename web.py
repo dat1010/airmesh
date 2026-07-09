@@ -503,7 +503,7 @@ class MeshairHandler(BaseHTTPRequestHandler):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Serve a local web UI for meshair readings.")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--port", type=int, default=8055)
     parser.add_argument("--db", type=Path, default=Path("data/meshair.db"))
     return parser.parse_args()
 

@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db", default="data/meshair.db")
     parser.add_argument("--web", action="store_true", help="Start the local web UI too")
     parser.add_argument("--web-host", default="0.0.0.0")
-    parser.add_argument("--web-port", type=int, default=8080)
+    parser.add_argument("--web-port", type=int, default=8055)
     return parser.parse_args()
 
 
