@@ -1,0 +1,16 @@
+services:
+  writer:
+    build: .
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    command:
+      - --mqtt-host
+      - localhost
+      - --topic
+      - meshair/airquality/+
+      - --jsonl
+      - /data/airquality.jsonl
+      - --db
+      - /data/meshair.db
