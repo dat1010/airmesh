@@ -27,6 +27,7 @@ INDEX_HTML = """<!doctype html>
       --accent: #d7ff5f;
       --cyan: #6ee7d8;
       --rose: #ff8f70;
+      --gold: #ffd166;
       --shadow: rgba(0, 0, 0, 0.32);
     }
 
@@ -92,7 +93,7 @@ INDEX_HTML = """<!doctype html>
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 12px;
       margin: 22px 0;
     }
@@ -230,7 +231,7 @@ INDEX_HTML = """<!doctype html>
     <header>
       <div>
         <h1>meshair</h1>
-        <p class="subtitle">AQ1 particulate readings captured over Meshtastic and stored locally.</p>
+        <p class="subtitle">AQ1 air-quality and environmental readings captured over Meshtastic and stored locally.</p>
       </div>
       <div class="status"><span class="pulse"></span><span id="statusText">loading</span></div>
     </header>
@@ -239,7 +240,9 @@ INDEX_HTML = """<!doctype html>
       <article class="tile"><div class="label">PM1.0</div><div class="value"><span id="pm1">--</span><span class="unit">ug/m3</span></div></article>
       <article class="tile"><div class="label">PM2.5</div><div class="value"><span id="pm25">--</span><span class="unit">ug/m3</span></div></article>
       <article class="tile"><div class="label">PM10</div><div class="value"><span id="pm10">--</span><span class="unit">ug/m3</span></div></article>
-      <article class="tile"><div class="label">Saved Readings</div><div class="value"><span id="count">--</span></div></article>
+      <article class="tile"><div class="label">Temp</div><div class="value"><span id="temp">--</span><span class="unit">C</span></div></article>
+      <article class="tile"><div class="label">Humidity</div><div class="value"><span id="humidity">--</span><span class="unit">%</span></div></article>
+      <article class="tile"><div class="label">Pressure</div><div class="value"><span id="pressure">--</span><span class="unit">hPa</span></div></article>
     </section>
 
     <section class="chart" aria-label="Recent trend">
@@ -266,11 +269,12 @@ INDEX_HTML = """<!doctype html>
             <th class="numeric">PM1</th>
             <th class="numeric">PM2.5</th>
             <th class="numeric">PM10</th>
-            <th class="numeric">RSSI</th>
-            <th class="numeric">SNR</th>
+            <th class="numeric">Temp</th>
+            <th class="numeric">Humidity</th>
+            <th class="numeric">Pressure</th>
           </tr>
         </thead>
-        <tbody id="rows"><tr><td class="empty" colspan="7">Loading readings</td></tr></tbody>
+        <tbody id="rows"><tr><td class="empty" colspan="8">Loading readings</td></tr></tbody>
       </table>
     </section>
   </main>
@@ -289,16 +293,24 @@ INDEX_HTML = """<!doctype html>
       document.getElementById(id).textContent = value ?? "--";
     }
 
+    function fmtNumber(value, digits = 1) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "--";
+      return number.toFixed(digits).replace(/\\.0$/, "");
+    }
+
     function renderTiles() {
       const latest = state.readings[0];
-      setText("count", state.count);
       setText("pm1", latest?.pm1_standard);
       setText("pm25", latest?.pm25_standard);
       setText("pm10", latest?.pm10_standard);
+      setText("temp", fmtNumber(latest?.temperature_c));
+      setText("humidity", fmtNumber(latest?.relative_humidity));
+      setText("pressure", fmtNumber(latest?.barometric_pressure));
 
       if (latest) {
         document.getElementById("latestMeta").textContent =
-          `${fmtTime(latest.received_at)} | node ${latest.source_node} | RSSI ${latest.rx_rssi ?? "--"} | SNR ${latest.rx_snr ?? "--"}`;
+          `${fmtTime(latest.received_at)} | node ${latest.source_node} | ${state.count} saved readings`;
         document.getElementById("statusText").textContent = "live from SQLite";
       } else {
         document.getElementById("latestMeta").textContent = "Waiting for readings";
@@ -309,7 +321,7 @@ INDEX_HTML = """<!doctype html>
     function renderRows() {
       const body = document.getElementById("rows");
       if (!state.readings.length) {
-        body.innerHTML = '<tr><td class="empty" colspan="7">No readings saved yet</td></tr>';
+        body.innerHTML = '<tr><td class="empty" colspan="8">No readings saved yet</td></tr>';
         return;
       }
 
@@ -320,8 +332,9 @@ INDEX_HTML = """<!doctype html>
           <td class="numeric">${reading.pm1_standard ?? "--"}</td>
           <td class="numeric">${reading.pm25_standard ?? "--"}</td>
           <td class="numeric">${reading.pm10_standard ?? "--"}</td>
-          <td class="numeric">${reading.rx_rssi ?? "--"}</td>
-          <td class="numeric">${reading.rx_snr ?? "--"}</td>
+          <td class="numeric">${fmtNumber(reading.temperature_c)}</td>
+          <td class="numeric">${fmtNumber(reading.relative_humidity)}</td>
+          <td class="numeric">${fmtNumber(reading.barometric_pressure)}</td>
         </tr>
       `).join("");
     }
@@ -398,6 +411,12 @@ SELECT received_at,
        pm1_environmental,
        pm25_environmental,
        pm10_environmental,
+       temperature_c,
+       relative_humidity,
+       barometric_pressure,
+       gas_resistance,
+       voltage,
+       current,
        rx_snr,
        rx_rssi,
        hop_limit,

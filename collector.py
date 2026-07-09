@@ -71,6 +71,35 @@ def extract_air_quality(packet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+def extract_environment(packet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    decoded = packet.get("decoded", {})
+    telemetry = decoded.get("telemetry", {})
+
+    env = (
+        telemetry.get("environment_metrics")
+        or telemetry.get("environmentMetrics")
+        or telemetry.get("environment")
+    )
+
+    if not isinstance(env, dict):
+        return None
+
+    metrics = {
+        "temperature_c": pick(env, "temperature", "temperature_c", "temperatureC"),
+        "relative_humidity": pick(env, "relative_humidity", "relativeHumidity", "humidity"),
+        "barometric_pressure": pick(env, "barometric_pressure", "barometricPressure", "pressure"),
+        "gas_resistance": pick(env, "gas_resistance", "gasResistance"),
+        "voltage": pick(env, "voltage"),
+        "current": pick(env, "current"),
+        "raw_environment": env,
+    }
+
+    if all(value is None for key, value in metrics.items() if key != "raw_environment"):
+        return None
+
+    return metrics
+
+
 def make_packet_summary(packet: Dict[str, Any]) -> Dict[str, Any]:
     decoded = packet.get("decoded", {})
 
@@ -126,7 +155,8 @@ def main() -> int:
         
 
         aq = extract_air_quality(packet)
-        if aq is None:
+        env = extract_environment(packet)
+        if aq is None and env is None:
             return
 
         from_node = packet.get("from")
@@ -136,7 +166,10 @@ def main() -> int:
         payload = {
             **summary,
             "source": from_node,
-            "metrics": aq,
+            "metrics": {
+                **(aq or {}),
+                **(env or {}),
+            },
         }
 
         publish(f"{args.topic_prefix}/airquality/{from_node}", payload)

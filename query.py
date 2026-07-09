@@ -10,8 +10,9 @@ SELECT received_at,
        pm1_standard,
        pm25_standard,
        pm10_standard,
-       rx_rssi,
-       rx_snr
+       temperature_c,
+       relative_humidity,
+       barometric_pressure
 FROM air_quality_readings
 ORDER BY received_at DESC
 LIMIT ?;
@@ -31,7 +32,8 @@ def print_latest(conn: sqlite3.Connection, limit: int) -> None:
     for row in rows:
         print(
             f"{row[0]} node={row[1]} PM1={row[2]} PM2.5={row[3]} "
-            f"PM10={row[4]} RSSI={row[5]} SNR={row[6]}"
+            f"PM10={row[4]} temp_c={row[5]} humidity={row[6]} "
+            f"pressure={row[7]}"
         )
 
 

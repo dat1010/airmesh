@@ -24,6 +24,13 @@ CREATE TABLE IF NOT EXISTS air_quality_readings (
   pm25_environmental INTEGER,
   pm10_environmental INTEGER,
 
+  temperature_c REAL,
+  relative_humidity REAL,
+  barometric_pressure REAL,
+  gas_resistance REAL,
+  voltage REAL,
+  current REAL,
+
   rx_snr REAL,
   rx_rssi INTEGER,
   hop_limit INTEGER,
@@ -43,6 +50,16 @@ ON air_quality_readings(source_node, received_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_air_quality_packet_id
 ON air_quality_readings(source_node, packet_id);
 """
+
+
+OPTIONAL_COLUMNS = {
+    "temperature_c": "REAL",
+    "relative_humidity": "REAL",
+    "barometric_pressure": "REAL",
+    "gas_resistance": "REAL",
+    "voltage": "REAL",
+    "current": "REAL",
+}
 
 
 def utc_now_iso() -> str:
@@ -75,8 +92,20 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     ensure_parent(db_path)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA_SQL)
+    ensure_optional_columns(conn)
     conn.commit()
     return conn
+
+
+def ensure_optional_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(air_quality_readings)").fetchall()
+    }
+
+    for column, column_type in OPTIONAL_COLUMNS.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE air_quality_readings ADD COLUMN {column} {column_type}")
 
 
 def source_id_from_topic(topic: str) -> str | None:
@@ -110,6 +139,12 @@ def reading_from_payload(topic: str, payload: bytes) -> dict:
         "pm1_environmental": int_or_none(metrics.get("pm1_environmental")),
         "pm25_environmental": int_or_none(metrics.get("pm25_environmental")),
         "pm10_environmental": int_or_none(metrics.get("pm10_environmental")),
+        "temperature_c": float_or_none(metrics.get("temperature_c")),
+        "relative_humidity": float_or_none(metrics.get("relative_humidity")),
+        "barometric_pressure": float_or_none(metrics.get("barometric_pressure")),
+        "gas_resistance": float_or_none(metrics.get("gas_resistance")),
+        "voltage": float_or_none(metrics.get("voltage")),
+        "current": float_or_none(metrics.get("current")),
         "rx_snr": float_or_none(message.get("rx_snr")),
         "rx_rssi": int_or_none(message.get("rx_rssi")),
         "hop_limit": int_or_none(message.get("hop_limit")),
@@ -140,6 +175,12 @@ def insert_reading(conn: sqlite3.Connection, reading: dict) -> bool:
           pm1_environmental,
           pm25_environmental,
           pm10_environmental,
+          temperature_c,
+          relative_humidity,
+          barometric_pressure,
+          gas_resistance,
+          voltage,
+          current,
           rx_snr,
           rx_rssi,
           hop_limit,
@@ -156,6 +197,12 @@ def insert_reading(conn: sqlite3.Connection, reading: dict) -> bool:
           :pm1_environmental,
           :pm25_environmental,
           :pm10_environmental,
+          :temperature_c,
+          :relative_humidity,
+          :barometric_pressure,
+          :gas_resistance,
+          :voltage,
+          :current,
           :rx_snr,
           :rx_rssi,
           :hop_limit,
@@ -177,8 +224,9 @@ def format_saved_line(reading: dict, saved: bool) -> str:
         f"PM1={reading['pm1_standard']} "
         f"PM2.5={reading['pm25_standard']} "
         f"PM10={reading['pm10_standard']} "
-        f"RSSI={reading['rx_rssi']} "
-        f"SNR={reading['rx_snr']} "
+        f"T={reading['temperature_c']}C "
+        f"RH={reading['relative_humidity']}% "
+        f"P={reading['barometric_pressure']}hPa "
         f"{status}"
     )
 

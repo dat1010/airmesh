@@ -60,9 +60,9 @@ python writer.py \
 ```
 
 The collector reads AQ1 packets through AQ2 on USB and publishes normalized
-air-quality messages to MQTT. The writer creates `data/`, appends every matching
-MQTT payload to `data/airquality.jsonl`, and inserts structured readings into
-`data/meshair.db`.
+air-quality and environmental telemetry to MQTT. The writer creates `data/`,
+appends every matching MQTT payload to `data/airquality.jsonl`, and inserts
+structured readings into `data/meshair.db`.
 
 Duplicate packet IDs are ignored in SQLite using a unique index on
 `(source_node, packet_id)`. The raw JSONL log still records every received
@@ -79,7 +79,7 @@ Or use SQLite directly:
 
 ```bash
 sqlite3 data/meshair.db \
-  "select received_at, source_node, pm1_standard, pm25_standard, pm10_standard, rx_rssi, rx_snr from air_quality_readings order by received_at desc limit 10;"
+  "select received_at, source_node, pm1_standard, pm25_standard, pm10_standard, temperature_c, relative_humidity, barometric_pressure from air_quality_readings order by received_at desc limit 10;"
 ```
 
 ## Web UI
