@@ -200,12 +200,13 @@ INDEX_HTML = """<!doctype html>
     svg {
       display: block;
       width: 100%;
-      height: 230px;
+      height: 260px;
       overflow: visible;
     }
 
     .grid-line { stroke: rgba(244, 240, 230, 0.12); stroke-width: 1; }
     .axis-label { fill: var(--muted); font-size: 11px; }
+    .axis-tick { stroke: rgba(244, 240, 230, 0.18); stroke-width: 1; }
     .series { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 
     .table-wrap {
@@ -286,7 +287,7 @@ INDEX_HTML = """<!doctype html>
           <div class="group-meta" id="envMeta">Waiting for environment packet</div>
         </div>
         <div class="metrics">
-          <article class="tile"><div class="label">Temp</div><div class="value"><span id="temp">--</span><span class="unit">C</span></div></article>
+          <article class="tile"><div class="label">Temp</div><div class="value"><span id="temp">--</span><span class="unit">F</span></div></article>
           <article class="tile"><div class="label">Humidity</div><div class="value"><span id="humidity">--</span><span class="unit">%</span></div></article>
           <article class="tile"><div class="label">Pressure</div><div class="value"><span id="pressure">--</span><span class="unit">hPa</span></div></article>
         </div>
@@ -318,7 +319,7 @@ INDEX_HTML = """<!doctype html>
             <th class="numeric">PM1</th>
             <th class="numeric">PM2.5</th>
             <th class="numeric">PM10</th>
-            <th class="numeric">Temp</th>
+            <th class="numeric">Temp F</th>
             <th class="numeric">Humidity</th>
             <th class="numeric">Pressure</th>
           </tr>
@@ -359,6 +360,13 @@ INDEX_HTML = """<!doctype html>
       return number.toFixed(digits).replace(/\\.0$/, "");
     }
 
+    function cToF(value) {
+      if (value === null || value === undefined || value === "") return null;
+      const number = Number(value);
+      if (!Number.isFinite(number)) return null;
+      return (number * 9 / 5) + 32;
+    }
+
     function readingType(reading) {
       if (["pm1_standard", "pm25_standard", "pm10_standard"].some((key) => reading[key] !== null && reading[key] !== undefined)) {
         return "air";
@@ -386,7 +394,7 @@ INDEX_HTML = """<!doctype html>
       setText("pm1", latestValue("pm1_standard"));
       setText("pm25", latestValue("pm25_standard"));
       setText("pm10", latestValue("pm10_standard"));
-      setText("temp", fmtNumber(latestValue("temperature_c")));
+      setText("temp", fmtNumber(cToF(latestValue("temperature_c"))));
       setText("humidity", fmtNumber(latestValue("relative_humidity")));
       setText("pressure", fmtNumber(latestValue("barometric_pressure")));
 
@@ -423,23 +431,56 @@ INDEX_HTML = """<!doctype html>
           <td class="numeric">${reading.pm1_standard ?? "--"}</td>
           <td class="numeric">${reading.pm25_standard ?? "--"}</td>
           <td class="numeric">${reading.pm10_standard ?? "--"}</td>
-          <td class="numeric">${fmtNumber(reading.temperature_c)}</td>
+          <td class="numeric">${fmtNumber(cToF(reading.temperature_c))}</td>
           <td class="numeric">${fmtNumber(reading.relative_humidity)}</td>
           <td class="numeric">${fmtNumber(reading.barometric_pressure)}</td>
         </tr>
       `).join("");
     }
 
-    function pointsFor(readings, key, width, height, pad) {
+    function readingTime(reading) {
+      const time = new Date(reading.received_at).getTime();
+      return Number.isFinite(time) ? time : null;
+    }
+
+    function pointsFor(readings, key, width, height, pad, minTime, maxTime, maxValue) {
       const values = readings.map((reading) => Number(reading[key])).filter(Number.isFinite);
-      const maxValue = Math.max(10, ...values);
       return readings.map((reading, index) => {
         const value = Number(reading[key]);
-        if (!Number.isFinite(value)) return null;
-        const x = pad + (index * (width - pad * 2)) / Math.max(1, readings.length - 1);
+        const time = readingTime(reading);
+        if (!Number.isFinite(value) || time === null) return null;
+        const timeRange = Math.max(1, maxTime - minTime);
+        const x = pad + ((time - minTime) / timeRange) * (width - pad * 2);
         const y = height - pad - (value / maxValue) * (height - pad * 2);
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).filter(Boolean).join(" ");
+    }
+
+    function formatHourLabel(time) {
+      return new Date(time).toLocaleTimeString([], { hour: "numeric" });
+    }
+
+    function chartTicks(minTime, maxTime, width, height, pad) {
+      const hour = 60 * 60 * 1000;
+      const span = Math.max(hour, maxTime - minTime);
+      const step = span > 12 * hour ? 3 * hour : span > 6 * hour ? 2 * hour : hour;
+      const firstTick = Math.ceil(minTime / step) * step;
+      const ticks = [];
+
+      for (let time = firstTick; time <= maxTime; time += step) {
+        const x = pad + ((time - minTime) / Math.max(1, maxTime - minTime)) * (width - pad * 2);
+        ticks.push(`
+          <line class="axis-tick" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${height - pad}" y2="${height - pad + 6}"></line>
+          <text class="axis-label" x="${x.toFixed(1)}" y="${height - 5}" text-anchor="middle">${formatHourLabel(time)}</text>
+        `);
+      }
+
+      if (!ticks.length) {
+        const x = pad;
+        ticks.push(`<text class="axis-label" x="${x}" y="${height - 5}" text-anchor="start">${formatHourLabel(minTime)}</text>`);
+      }
+
+      return ticks.join("");
     }
 
     function renderChart() {
@@ -449,14 +490,22 @@ INDEX_HTML = """<!doctype html>
         .filter((reading) => ["pm1_standard", "pm25_standard", "pm10_standard"].some((key) => reading[key] !== null && reading[key] !== undefined))
         .slice(-60);
       const width = 900;
-      const height = 230;
-      const pad = 28;
+      const height = 260;
+      const pad = 34;
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
       if (readings.length < 2) {
         svg.innerHTML = '<text x="28" y="118" class="axis-label">Waiting for at least two readings</text>';
         return;
       }
+
+      const times = readings.map(readingTime).filter((time) => time !== null);
+      const values = readings
+        .flatMap((reading) => ["pm1_standard", "pm25_standard", "pm10_standard"].map((key) => Number(reading[key])))
+        .filter(Number.isFinite);
+      const minTime = Math.min(...times);
+      const maxTime = Math.max(...times);
+      const maxValue = Math.max(10, ...values);
 
       const grid = [0, 1, 2, 3].map((step) => {
         const y = pad + step * ((height - pad * 2) / 3);
@@ -465,9 +514,10 @@ INDEX_HTML = """<!doctype html>
 
       svg.innerHTML = `
         ${grid}
-        <polyline class="series" stroke="var(--accent)" points="${pointsFor(readings, "pm1_standard", width, height, pad)}"></polyline>
-        <polyline class="series" stroke="var(--cyan)" points="${pointsFor(readings, "pm25_standard", width, height, pad)}"></polyline>
-        <polyline class="series" stroke="var(--rose)" points="${pointsFor(readings, "pm10_standard", width, height, pad)}"></polyline>
+        ${chartTicks(minTime, maxTime, width, height, pad)}
+        <polyline class="series" stroke="var(--accent)" points="${pointsFor(readings, "pm1_standard", width, height, pad, minTime, maxTime, maxValue)}"></polyline>
+        <polyline class="series" stroke="var(--cyan)" points="${pointsFor(readings, "pm25_standard", width, height, pad, minTime, maxTime, maxValue)}"></polyline>
+        <polyline class="series" stroke="var(--rose)" points="${pointsFor(readings, "pm10_standard", width, height, pad, minTime, maxTime, maxValue)}"></polyline>
       `;
     }
 
