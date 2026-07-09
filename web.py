@@ -123,6 +123,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     .tile,
+    .device-strip,
     .chart,
     .table-wrap {
       background: color-mix(in srgb, var(--panel) 88%, black);
@@ -163,6 +164,34 @@ INDEX_HTML = """<!doctype html>
       font-size: 0.88rem;
       font-weight: 500;
       flex: 0 0 auto;
+    }
+
+    .device-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 1px;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .device-item {
+      background: rgba(255, 255, 255, 0.015);
+      min-height: 74px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .device-value {
+      margin-top: 10px;
+      font-size: 1.08rem;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .chart {
@@ -247,6 +276,7 @@ INDEX_HTML = """<!doctype html>
       header { grid-template-columns: 1fr; align-items: start; }
       .status { justify-content: flex-start; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .device-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .group-head { display: block; }
       .group-meta { margin-top: 8px; text-align: left; }
     }
@@ -254,6 +284,7 @@ INDEX_HTML = """<!doctype html>
     @media (max-width: 520px) {
       .shell { width: min(100% - 18px, 1180px); padding-top: 12px; }
       .metrics { grid-template-columns: 1fr; }
+      .device-strip { grid-template-columns: 1fr; }
       .chart-head { align-items: flex-start; flex-direction: column; }
     }
   </style>
@@ -292,6 +323,14 @@ INDEX_HTML = """<!doctype html>
           <article class="tile"><div class="label">Pressure</div><div class="value"><span id="pressure">--</span><span class="unit">hPa</span></div></article>
         </div>
       </div>
+    </section>
+
+    <section class="device-strip" aria-label="Latest device status">
+      <div class="device-item"><div class="label">Battery</div><div class="device-value"><span id="battery">--</span></div></div>
+      <div class="device-item"><div class="label">Voltage</div><div class="device-value"><span id="voltage">--</span></div></div>
+      <div class="device-item"><div class="label">Channel Util</div><div class="device-value"><span id="channelUtil">--</span></div></div>
+      <div class="device-item"><div class="label">Air Tx</div><div class="device-value"><span id="airUtilTx">--</span></div></div>
+      <div class="device-item"><div class="label">Uptime</div><div class="device-value"><span id="uptime">--</span></div></div>
     </section>
 
     <section class="chart" aria-label="Recent trend">
@@ -367,6 +406,17 @@ INDEX_HTML = """<!doctype html>
       return (number * 9 / 5) + 32;
     }
 
+    function fmtDuration(seconds) {
+      const total = Number(seconds);
+      if (!Number.isFinite(total)) return "--";
+      const days = Math.floor(total / 86400);
+      const hours = Math.floor((total % 86400) / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      if (days > 0) return `${days}d ${hours}h`;
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      return `${minutes}m`;
+    }
+
     function readingType(reading) {
       if (["pm1_standard", "pm25_standard", "pm10_standard"].some((key) => reading[key] !== null && reading[key] !== undefined)) {
         return "air";
@@ -397,6 +447,11 @@ INDEX_HTML = """<!doctype html>
       setText("temp", fmtNumber(cToF(latestValue("temperature_c"))));
       setText("humidity", fmtNumber(latestValue("relative_humidity")));
       setText("pressure", fmtNumber(latestValue("barometric_pressure")));
+      setText("battery", latestValue("battery_level") === undefined ? "--" : `${latestValue("battery_level")}%`);
+      setText("voltage", latestValue("voltage") === undefined ? "--" : `${fmtNumber(latestValue("voltage"), 2)} V`);
+      setText("channelUtil", latestValue("channel_utilization") === undefined ? "--" : `${fmtNumber(latestValue("channel_utilization"), 1)}%`);
+      setText("airUtilTx", latestValue("air_util_tx") === undefined ? "--" : `${fmtNumber(latestValue("air_util_tx"), 2)}%`);
+      setText("uptime", fmtDuration(latestValue("uptime_seconds")));
 
       document.getElementById("airMeta").textContent = latestAir
         ? `${fmtTime(latestAir.received_at)} | node ${latestAir.source_node}`
@@ -423,7 +478,16 @@ INDEX_HTML = """<!doctype html>
         return;
       }
 
-      body.innerHTML = state.readings.slice(0, 40).map((reading) => `
+      const sensorRows = state.readings
+        .filter((reading) => ["air", "env"].includes(readingType(reading)))
+        .slice(0, 40);
+
+      if (!sensorRows.length) {
+        body.innerHTML = '<tr><td class="empty" colspan="9">No sensor readings saved yet</td></tr>';
+        return;
+      }
+
+      body.innerHTML = sensorRows.map((reading) => `
         <tr>
           <td>${fmtTime(reading.received_at)}</td>
           <td>${readingType(reading)}</td>
