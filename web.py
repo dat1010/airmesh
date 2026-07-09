@@ -91,11 +91,35 @@ INDEX_HTML = """<!doctype html>
       box-shadow: 0 0 0 8px rgba(215, 255, 95, 0.08);
     }
 
+    .metric-groups {
+      display: grid;
+      gap: 14px;
+      margin: 22px 0;
+    }
+
+    .metric-group {
+      display: grid;
+      gap: 12px;
+    }
+
+    .group-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      min-height: 24px;
+    }
+
+    .group-meta {
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-align: right;
+    }
+
     .metrics {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
-      margin: 22px 0;
     }
 
     .tile,
@@ -124,16 +148,21 @@ INDEX_HTML = """<!doctype html>
 
     .value {
       margin-top: 18px;
-      font-size: clamp(1.7rem, 4vw, 3rem);
+      display: flex;
+      align-items: baseline;
+      gap: 0.35rem;
+      min-width: 0;
+      font-size: clamp(1.9rem, 3.2vw, 3rem);
       line-height: 1;
       font-weight: 800;
+      white-space: nowrap;
     }
 
     .unit {
       color: var(--muted);
       font-size: 0.88rem;
-      margin-left: 4px;
       font-weight: 500;
+      flex: 0 0 auto;
     }
 
     .chart {
@@ -188,7 +217,7 @@ INDEX_HTML = """<!doctype html>
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 760px;
+      min-width: 860px;
     }
 
     th,
@@ -217,6 +246,8 @@ INDEX_HTML = """<!doctype html>
       header { grid-template-columns: 1fr; align-items: start; }
       .status { justify-content: flex-start; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .group-head { display: block; }
+      .group-meta { margin-top: 8px; text-align: left; }
     }
 
     @media (max-width: 520px) {
@@ -236,13 +267,30 @@ INDEX_HTML = """<!doctype html>
       <div class="status"><span class="pulse"></span><span id="statusText">loading</span></div>
     </header>
 
-    <section class="metrics" aria-label="Latest reading">
-      <article class="tile"><div class="label">PM1.0</div><div class="value"><span id="pm1">--</span><span class="unit">ug/m3</span></div></article>
-      <article class="tile"><div class="label">PM2.5</div><div class="value"><span id="pm25">--</span><span class="unit">ug/m3</span></div></article>
-      <article class="tile"><div class="label">PM10</div><div class="value"><span id="pm10">--</span><span class="unit">ug/m3</span></div></article>
-      <article class="tile"><div class="label">Temp</div><div class="value"><span id="temp">--</span><span class="unit">C</span></div></article>
-      <article class="tile"><div class="label">Humidity</div><div class="value"><span id="humidity">--</span><span class="unit">%</span></div></article>
-      <article class="tile"><div class="label">Pressure</div><div class="value"><span id="pressure">--</span><span class="unit">hPa</span></div></article>
+    <section class="metric-groups" aria-label="Latest readings">
+      <div class="metric-group">
+        <div class="group-head">
+          <div class="label">Air Quality</div>
+          <div class="group-meta" id="airMeta">Waiting for PM packet</div>
+        </div>
+        <div class="metrics">
+          <article class="tile"><div class="label">PM1.0</div><div class="value"><span id="pm1">--</span><span class="unit">ug/m3</span></div></article>
+          <article class="tile"><div class="label">PM2.5</div><div class="value"><span id="pm25">--</span><span class="unit">ug/m3</span></div></article>
+          <article class="tile"><div class="label">PM10</div><div class="value"><span id="pm10">--</span><span class="unit">ug/m3</span></div></article>
+        </div>
+      </div>
+
+      <div class="metric-group">
+        <div class="group-head">
+          <div class="label">Environment</div>
+          <div class="group-meta" id="envMeta">Waiting for environment packet</div>
+        </div>
+        <div class="metrics">
+          <article class="tile"><div class="label">Temp</div><div class="value"><span id="temp">--</span><span class="unit">C</span></div></article>
+          <article class="tile"><div class="label">Humidity</div><div class="value"><span id="humidity">--</span><span class="unit">%</span></div></article>
+          <article class="tile"><div class="label">Pressure</div><div class="value"><span id="pressure">--</span><span class="unit">hPa</span></div></article>
+        </div>
+      </div>
     </section>
 
     <section class="chart" aria-label="Recent trend">
@@ -265,6 +313,7 @@ INDEX_HTML = """<!doctype html>
         <thead>
           <tr>
             <th>Received</th>
+            <th>Type</th>
             <th class="numeric">Node</th>
             <th class="numeric">PM1</th>
             <th class="numeric">PM2.5</th>
@@ -274,7 +323,7 @@ INDEX_HTML = """<!doctype html>
             <th class="numeric">Pressure</th>
           </tr>
         </thead>
-        <tbody id="rows"><tr><td class="empty" colspan="8">Loading readings</td></tr></tbody>
+        <tbody id="rows"><tr><td class="empty" colspan="9">Loading readings</td></tr></tbody>
       </table>
     </section>
   </main>
@@ -304,16 +353,32 @@ INDEX_HTML = """<!doctype html>
     }
 
     function fmtNumber(value, digits = 1) {
+      if (value === null || value === undefined || value === "") return "--";
       const number = Number(value);
       if (!Number.isFinite(number)) return "--";
       return number.toFixed(digits).replace(/\\.0$/, "");
     }
 
+    function readingType(reading) {
+      if (["pm1_standard", "pm25_standard", "pm10_standard"].some((key) => reading[key] !== null && reading[key] !== undefined)) {
+        return "air";
+      }
+      if (["temperature_c", "relative_humidity", "barometric_pressure"].some((key) => reading[key] !== null && reading[key] !== undefined)) {
+        return "env";
+      }
+      if (["battery_level", "voltage", "uptime_seconds"].some((key) => reading[key] !== null && reading[key] !== undefined)) {
+        return "device";
+      }
+      return "telemetry";
+    }
+
     function renderTiles() {
-      const latest = latestReadingWith(
+      const latestAir = latestReadingWith(
         "pm1_standard",
         "pm25_standard",
-        "pm10_standard",
+        "pm10_standard"
+      );
+      const latestEnv = latestReadingWith(
         "temperature_c",
         "relative_humidity",
         "barometric_pressure"
@@ -325,6 +390,14 @@ INDEX_HTML = """<!doctype html>
       setText("humidity", fmtNumber(latestValue("relative_humidity")));
       setText("pressure", fmtNumber(latestValue("barometric_pressure")));
 
+      document.getElementById("airMeta").textContent = latestAir
+        ? `${fmtTime(latestAir.received_at)} | node ${latestAir.source_node}`
+        : "Waiting for PM packet";
+      document.getElementById("envMeta").textContent = latestEnv
+        ? `${fmtTime(latestEnv.received_at)} | node ${latestEnv.source_node}`
+        : "Waiting for environment packet";
+
+      const latest = latestAir || latestEnv;
       if (latest) {
         document.getElementById("latestMeta").textContent =
           `${fmtTime(latest.received_at)} | node ${latest.source_node} | ${state.count} saved readings`;
@@ -338,13 +411,14 @@ INDEX_HTML = """<!doctype html>
     function renderRows() {
       const body = document.getElementById("rows");
       if (!state.readings.length) {
-        body.innerHTML = '<tr><td class="empty" colspan="8">No readings saved yet</td></tr>';
+        body.innerHTML = '<tr><td class="empty" colspan="9">No readings saved yet</td></tr>';
         return;
       }
 
       body.innerHTML = state.readings.slice(0, 40).map((reading) => `
         <tr>
           <td>${fmtTime(reading.received_at)}</td>
+          <td>${readingType(reading)}</td>
           <td class="numeric">${reading.source_node}</td>
           <td class="numeric">${reading.pm1_standard ?? "--"}</td>
           <td class="numeric">${reading.pm25_standard ?? "--"}</td>
@@ -370,7 +444,10 @@ INDEX_HTML = """<!doctype html>
 
     function renderChart() {
       const svg = document.getElementById("chart");
-      const readings = [...state.readings].reverse().slice(-60);
+      const readings = [...state.readings]
+        .reverse()
+        .filter((reading) => ["pm1_standard", "pm25_standard", "pm10_standard"].some((key) => reading[key] !== null && reading[key] !== undefined))
+        .slice(-60);
       const width = 900;
       const height = 230;
       const pad = 28;
