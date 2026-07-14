@@ -117,10 +117,12 @@ def ensure_optional_columns(conn: sqlite3.Connection) -> None:
 
 
 def source_id_from_topic(topic: str) -> str | None:
-    parts = topic.rsplit("/", 1)
-    if len(parts) != 2:
-        return None
-    return parts[1] or None
+    parts = topic.split("/")
+    if len(parts) >= 4 and parts[-3] == "nodes" and parts[-1] == "telemetry":
+        return parts[-2] or None
+    if len(parts) >= 3 and parts[-2] == "airquality":
+        return parts[-1] or None
+    return parts[-1] if parts else None
 
 
 def reading_from_payload(topic: str, payload: bytes) -> dict:
@@ -139,7 +141,7 @@ def reading_from_payload(topic: str, payload: bytes) -> dict:
     return {
         "received_at": message.get("received_at") or utc_now_iso(),
         "source_node": source_node,
-        "source_node_id": message.get("source_node_id") or source_id_from_topic(topic),
+        "source_node_id": message.get("source_node_id") or message.get("fromId") or source_id_from_topic(topic),
         "mqtt_topic": topic,
         "pm1_standard": int_or_none(metrics.get("pm1_standard")),
         "pm25_standard": int_or_none(metrics.get("pm25_standard")),
@@ -279,7 +281,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--mqtt-host", default="localhost")
     parser.add_argument("--mqtt-port", type=int, default=1883)
-    parser.add_argument("--topic", default="meshair/airquality/+")
+    parser.add_argument(
+        "--topic",
+        action="append",
+        default=[],
+        help="MQTT topic to subscribe to. Repeat for multiple topics.",
+    )
     parser.add_argument("--jsonl", type=Path, default=Path("data/airquality.jsonl"))
     parser.add_argument("--db", type=Path, default=Path("data/meshair.db"))
     parser.add_argument("--client-id", default="meshair-writer")
@@ -290,14 +297,16 @@ def main() -> int:
     import paho.mqtt.client as mqtt
 
     args = parse_args()
+    topics = args.topic or ["meshair/nodes/+/telemetry", "meshair/airquality/+"]
     conn = connect_db(args.db)
 
     def on_connect(client, userdata, flags, reason_code, properties):
         if mqtt_connect_failed(reason_code):
             print(f"MQTT connect failed: {reason_code}", file=sys.stderr)
             return
-        client.subscribe(args.topic)
-        print(f"subscribed to {args.topic} on {args.mqtt_host}:{args.mqtt_port}")
+        for topic in topics:
+            client.subscribe(topic)
+        print(f"subscribed to {', '.join(topics)} on {args.mqtt_host}:{args.mqtt_port}")
 
     def on_message(client, userdata, message):
         try:

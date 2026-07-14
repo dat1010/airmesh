@@ -11,7 +11,13 @@ def parse_args() -> argparse.Namespace:
         description="Run the Meshtastic collector and persistence writer together."
     )
     parser.add_argument("--port", default="/dev/ttyACM0", help="Meshtastic serial port")
-    parser.add_argument("--aq1", default="0x84f3f1a7", help="AQ1 node id")
+    parser.add_argument(
+        "--node",
+        action="append",
+        default=[],
+        help="Optional node id allowlist. Repeat for multiple nodes. Defaults to all nodes.",
+    )
+    parser.add_argument("--aq1", default=None, help="Deprecated alias for --node")
     parser.add_argument("--mqtt-host", default="localhost")
     parser.add_argument("--mqtt-port", type=int, default=1883)
     parser.add_argument("--topic-prefix", default="meshair")
@@ -44,8 +50,6 @@ def main() -> int:
         "collector.py",
         "--port",
         args.port,
-        "--aq1",
-        args.aq1,
         "--mqtt-host",
         args.mqtt_host,
         "--mqtt-port",
@@ -53,6 +57,11 @@ def main() -> int:
         "--topic-prefix",
         args.topic_prefix,
     ]
+    for node in args.node:
+        collector_cmd.extend(["--node", node])
+    if args.aq1:
+        collector_cmd.extend(["--node", args.aq1])
+
     writer_cmd = [
         python,
         "writer.py",
@@ -61,7 +70,7 @@ def main() -> int:
         "--mqtt-port",
         str(args.mqtt_port),
         "--topic",
-        f"{args.topic_prefix}/airquality/+",
+        f"{args.topic_prefix}/nodes/+/telemetry",
         "--jsonl",
         args.jsonl,
         "--db",

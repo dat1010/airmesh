@@ -97,6 +97,51 @@ INDEX_HTML = """<!doctype html>
       margin: 22px 0;
     }
 
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin: 22px 0;
+    }
+
+    .node-card {
+      background: color-mix(in srgb, var(--panel) 88%, black);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 16px;
+      box-shadow: 0 18px 60px var(--shadow);
+    }
+
+    .node-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .node-id {
+      font-size: 1.1rem;
+      font-weight: 800;
+    }
+
+    .node-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .node-stat {
+      min-width: 0;
+    }
+
+    .node-stat-value {
+      margin-top: 6px;
+      font-size: 1.35rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
     .metric-group {
       display: grid;
       gap: 12px;
@@ -294,10 +339,12 @@ INDEX_HTML = """<!doctype html>
     <header>
       <div>
         <h1>meshair</h1>
-        <p class="subtitle">AQ1 air-quality and environmental readings captured over Meshtastic and stored locally.</p>
+        <p class="subtitle">Air-quality and environmental readings captured from Meshtastic AQ nodes and stored locally.</p>
       </div>
       <div class="status"><span class="pulse"></span><span id="statusText">loading</span></div>
     </header>
+
+    <section class="node-grid" id="nodeGrid" aria-label="AQ nodes"></section>
 
     <section class="metric-groups" aria-label="Latest readings">
       <div class="metric-group">
@@ -392,6 +439,10 @@ INDEX_HTML = """<!doctype html>
       );
     }
 
+    function latestForNode(nodeReadings, key) {
+      return nodeReadings.find((reading) => reading[key] !== null && reading[key] !== undefined)?.[key];
+    }
+
     function fmtNumber(value, digits = 1) {
       if (value === null || value === undefined || value === "") return "--";
       const number = Number(value);
@@ -428,6 +479,43 @@ INDEX_HTML = """<!doctype html>
         return "device";
       }
       return "telemetry";
+    }
+
+    function readingsByNode() {
+      return state.readings.reduce((nodes, reading) => {
+        const key = String(reading.source_node);
+        if (!nodes.has(key)) nodes.set(key, []);
+        nodes.get(key).push(reading);
+        return nodes;
+      }, new Map());
+    }
+
+    function renderNodeCards() {
+      const grid = document.getElementById("nodeGrid");
+      const nodes = [...readingsByNode().entries()].sort(([a], [b]) => Number(a) - Number(b));
+
+      if (!nodes.length) {
+        grid.innerHTML = "";
+        return;
+      }
+
+      grid.innerHTML = nodes.map(([node, readings]) => {
+        const latest = readings[0];
+        const battery = latestForNode(readings, "battery_level");
+        return `
+          <article class="node-card">
+            <div class="node-title">
+              <div class="node-id">AQ ${node}</div>
+              <div class="group-meta">${fmtTime(latest?.received_at)}</div>
+            </div>
+            <div class="node-stats">
+              <div class="node-stat"><div class="label">PM2.5</div><div class="node-stat-value">${latestForNode(readings, "pm25_standard") ?? "--"}</div></div>
+              <div class="node-stat"><div class="label">Temp</div><div class="node-stat-value">${fmtNumber(cToF(latestForNode(readings, "temperature_c")))}</div></div>
+              <div class="node-stat"><div class="label">Battery</div><div class="node-stat-value">${battery === undefined ? "--" : `${battery}%`}</div></div>
+            </div>
+          </article>
+        `;
+      }).join("");
     }
 
     function renderTiles() {
@@ -589,10 +677,11 @@ INDEX_HTML = """<!doctype html>
       try {
         const [summary, readings] = await Promise.all([
           fetch("/api/summary").then((response) => response.json()),
-          fetch("/api/readings?limit=80").then((response) => response.json()),
+          fetch("/api/readings?limit=250").then((response) => response.json()),
         ]);
         state.count = summary.count ?? 0;
         state.readings = readings.readings ?? [];
+        renderNodeCards();
         renderTiles();
         renderRows();
         renderChart();

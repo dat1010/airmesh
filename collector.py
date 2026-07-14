@@ -6,7 +6,7 @@ import signal
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 import meshtastic.serial_interface
 import paho.mqtt.client as mqtt
@@ -31,6 +31,31 @@ def pick(d: Dict[str, Any], *names: str) -> Optional[Any]:
         if isinstance(d, dict) and name in d:
             return d[name]
     return None
+
+
+def parse_node_id(value: str) -> int:
+    if value.startswith("!"):
+        return int(value[1:], 16)
+    return int(value, 16) if value.lower().startswith("0x") else int(value)
+
+
+def packet_node_id(packet: Dict[str, Any]) -> Optional[int]:
+    value = packet.get("from")
+    return value if isinstance(value, int) else None
+
+
+def node_allowed(node_id: Optional[int], allowed_nodes: Set[int]) -> bool:
+    return node_id is not None and (not allowed_nodes or node_id in allowed_nodes)
+
+
+def telemetry_kind(metrics: Dict[str, Any]) -> str:
+    if any(metrics.get(key) is not None for key in ("pm1_standard", "pm25_standard", "pm10_standard")):
+        return "air"
+    if any(metrics.get(key) is not None for key in ("temperature_c", "relative_humidity", "barometric_pressure")):
+        return "environment"
+    if any(metrics.get(key) is not None for key in ("battery_level", "voltage", "uptime_seconds")):
+        return "device"
+    return "telemetry"
 
 
 def extract_air_quality(packet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -149,8 +174,22 @@ def main() -> int:
     parser.add_argument("--mqtt-host", default="localhost")
     parser.add_argument("--mqtt-port", type=int, default=1883)
     parser.add_argument("--topic-prefix", default="meshair")
-    parser.add_argument("--aq1", default=None, help="Optional AQ1 node number, e.g. 0x84f3f1a7")
+    parser.add_argument(
+        "--publish-legacy-airquality",
+        action="store_true",
+        help="Also publish old meshair/airquality/<node> topics.",
+    )
+    parser.add_argument(
+        "--node",
+        action="append",
+        default=[],
+        help="Optional node id allowlist. Repeat for multiple nodes, e.g. --node 0x84f3f1a7",
+    )
+    parser.add_argument("--aq1", default=None, help="Deprecated alias for --node")
     args = parser.parse_args()
+    allowed_nodes = {parse_node_id(node) for node in args.node}
+    if args.aq1:
+        allowed_nodes.add(parse_node_id(args.aq1))
 
     mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     mqtt_client.connect(args.mqtt_host, args.mqtt_port, 60)
@@ -167,20 +206,15 @@ def main() -> int:
         summary = make_packet_summary(packet)
         decoded = packet.get("decoded", {})
 
-        # Publish all telemetry raw-ish first, so we can inspect exact packet shape.
-        from_node = packet.get("from")
+        from_node = packet_node_id(packet)
+        if not node_allowed(from_node, allowed_nodes):
+            return
 
-        aq1_matches = True
-        if args.aq1:
-            aq1_decimal = int(args.aq1, 16) if args.aq1.startswith("0x") else int(args.aq1)
-            aq1_matches = from_node == aq1_decimal
-
-        if decoded.get("portnum") == "TELEMETRY_APP" and aq1_matches:
+        if decoded.get("portnum") == "TELEMETRY_APP":
             publish(f"{args.topic_prefix}/raw/telemetry", {
                 **summary,
                 "packet": packet,
             })
-        
 
         aq = extract_air_quality(packet)
         env = extract_environment(packet)
@@ -188,21 +222,23 @@ def main() -> int:
         if aq is None and env is None and device is None:
             return
 
-        from_node = packet.get("from")
-        if args.aq1 and str(from_node).lower() not in {args.aq1.lower(), str(int(args.aq1, 16)) if args.aq1.startswith("0x") else args.aq1}:
-            return
+        metrics = {
+            **(aq or {}),
+            **(env or {}),
+            **(device or {}),
+        }
 
         payload = {
             **summary,
             "source": from_node,
-            "metrics": {
-                **(aq or {}),
-                **(env or {}),
-                **(device or {}),
-            },
+            "source_node_id": packet.get("fromId"),
+            "kind": telemetry_kind(metrics),
+            "metrics": metrics,
         }
 
-        publish(f"{args.topic_prefix}/airquality/{from_node}", payload)
+        publish(f"{args.topic_prefix}/nodes/{from_node}/telemetry", payload)
+        if args.publish_legacy_airquality:
+            publish(f"{args.topic_prefix}/airquality/{from_node}", payload)
 
     def shutdown(signum, frame):
         print("shutting down...", flush=True)

@@ -9,7 +9,7 @@ services:
       - --mqtt-host
       - localhost
       - --topic
-      - meshair/airquality/+
+      - meshair/nodes/+/telemetry
       - --jsonl
       - /data/airquality.jsonl
       - --db

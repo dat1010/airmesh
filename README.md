@@ -24,7 +24,6 @@ This starts both halves:
 ```bash
 python run_all.py \
   --port /dev/ttyACM0 \
-  --aq1 0x84f3f1a7 \
   --mqtt-host localhost \
   --web \
   --jsonl data/airquality.jsonl \
@@ -34,7 +33,15 @@ python run_all.py \
 Flow:
 
 ```text
-AQ1 -> LoRa -> AQ2 over USB -> collector.py -> MQTT -> writer.py -> JSONL + SQLite
+AQ nodes -> LoRa -> AQ2 over USB -> collector.py -> MQTT -> writer.py -> JSONL + SQLite
+```
+
+By default the collector stores telemetry from every node that sends supported
+air-quality, environmental, or device metrics. To restrict collection, repeat
+`--node`:
+
+```bash
+python run_all.py --port /dev/ttyACM0 --node 0x84f3f1a7 --web
 ```
 
 ## Run Separately
@@ -44,7 +51,6 @@ Terminal 1:
 ```bash
 python collector.py \
   --port /dev/ttyACM0 \
-  --aq1 0x84f3f1a7 \
   --mqtt-host localhost \
   --topic-prefix meshair
 ```
@@ -54,15 +60,15 @@ Terminal 2:
 ```bash
 python writer.py \
   --mqtt-host localhost \
-  --topic 'meshair/airquality/+' \
   --jsonl data/airquality.jsonl \
   --db data/meshair.db
 ```
 
-The collector reads AQ1 packets through AQ2 on USB and publishes normalized
-air-quality and environmental telemetry to MQTT. The writer creates `data/`,
+The collector reads AQ node packets through AQ2 on USB and publishes normalized
+telemetry to `meshair/nodes/<node>/telemetry`. The writer creates `data/`,
 appends every matching MQTT payload to `data/airquality.jsonl`, and inserts
-structured readings into `data/meshair.db`.
+structured readings into `data/meshair.db`. The old `meshair/airquality/+` topic
+is still accepted by the writer for compatibility with older collectors.
 
 Duplicate packet IDs are ignored in SQLite using a unique index on
 `(source_node, packet_id)`. The raw JSONL log still records every received
@@ -93,7 +99,7 @@ python web.py --host 0.0.0.0 --port 8055 --db data/meshair.db
 Or include it with the combined runner:
 
 ```bash
-python run_all.py --port /dev/ttyACM0 --aq1 0x84f3f1a7 --web
+python run_all.py --port /dev/ttyACM0 --web
 ```
 
 Open:
@@ -106,7 +112,7 @@ The page refreshes every 10 seconds and also exposes:
 
 ```text
 /api/summary
-/api/readings?limit=80
+/api/readings?limit=250
 /health
 ```
 
